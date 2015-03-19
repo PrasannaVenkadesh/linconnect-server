@@ -37,9 +37,9 @@ import cherrypy
 import subprocess
 from gi.repository import Notify
 from gi.repository import GLib
-import pybonjour
 import shutil
 import base64
+from ZeroconfService import ZeroconfService
 
 app_name = 'linconnect-server'
 version = "2.20"
@@ -81,7 +81,7 @@ except IOError:
     with open(conf_file, 'w') as text_file:
         text_file.write("""[connection]
 port = 9090
-enable_bonjour = 1
+enable_avahi = 1
 
 [other]
 enable_instruction_webpage = 1
@@ -152,26 +152,15 @@ class Notification(object):
     notif.exposed = True
 
 
-def register_callback(sdRef, flags, errorCode, name, regtype, domain):
-    if errorCode == pybonjour.kDNSServiceErr_NoError:
-        print("Registered Bonjour service " + name)
+def publish_service():
+    """
+    Registering and publishing a service using Avahi
+    """
 
-
-def initialize_bonjour():
-    sdRef = pybonjour.DNSServiceRegister(name=_service_name,
-                                     regtype="_linconnect._tcp",
-                                     port=int(parser.get('connection', 'port')),
-                                     callBack=register_callback)
-    try:
-        try:
-            while True:
-                ready = select.select([sdRef], [], [])
-                if sdRef in ready[0]:
-                    pybonjour.DNSServiceProcessResult(sdRef)
-        except KeyboardInterrupt:
-            pass
-    finally:
-        sdRef.close()
+    service = ZeroconfService(name=_service_name,
+                              stype="_linconnect._tcp",
+                              port=int(parser.get('connection', 'port')))
+    service.publish()
 
 
 def get_local_ip():
@@ -185,10 +174,9 @@ def get_local_ip():
 if not Notify.init("com.willhauck.linconnect"):
     raise ImportError("Error initializing libnotify")
 
-# Start Bonjour if desired
-if parser.getboolean('connection', 'enable_bonjour') == 1:
-    thr = threading.Thread(target=initialize_bonjour)
-    thr.start()
+# Start Avahi service in a thread
+thr = threading.Thread(target=publish_service)
+thr.start()
 
 config_instructions = "Configuration instructions at http://localhost:" + parser.get('connection', 'port')
 print(config_instructions)
